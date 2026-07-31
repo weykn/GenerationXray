@@ -1,0 +1,24 @@
+{
+  "key.seedxray.toggle": "render toggle",
+  "key.category.seedxray.modname": "Seed X-Ray",
+
+  "seedxray.config.title": "Seed X-Ray",
+  "seedxray.config.yes": "YES",
+  "seedxray.config.no": "NO",
+  "seedxray.config.active": "Active",
+  "seedxray.config.seed": "Seed",
+  "seedxray.config.blocks": "Ores / Blocks (%s)",
+  "seedxray.config.render_filled": "Render Filled",
+  "seedxray.config.render_distance": "Render Distance",
+  "seedxray.config.vertical_view_distance": "Vertical View Distance",
+  "seedxray.config.vertical_view_distance.unlimited": "All",
+  "seedxray.config.hud_status_indicator": "HUD Status Indicator",
+  "seedxray.config.reset": "Reset",
+
+  "seedxray.config.blocks.title": "Ores / Blocks",
+  "seedxray.config.blocks.add": "Add Block...",
+  "seedxray.config.blocks.remove": "X",
+  "seedxray.config.blocks.color": "Colour (RRGGBB)",
+  "seedxray.config.blocks.picker.title": "Add Block",
+  "seedxray.config.blocks.picker.search": "Search"
+}

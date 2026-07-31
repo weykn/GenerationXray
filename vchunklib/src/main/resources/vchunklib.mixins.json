@@ -1,0 +1,20 @@
+{
+	"required": true,
+	"package": "com.casiowatch123.vchunklib.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"ChunkRegionMixin", 
+        "StructureTemplateManagerMixin", 
+        "CappedStructureProcessorMixin", 
+        "FossilFeatureMixin", 
+        "EntityTypeMixin", 
+        "PaleMossTreeDecoratorMixin", 
+        "ItemFrameEntityMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

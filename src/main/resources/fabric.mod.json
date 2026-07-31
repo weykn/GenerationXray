@@ -1,43 +1,46 @@
 {
 	"schemaVersion": 1,
-	"id": "generation-xray",
+	"id": "seedxray",
 	"version": "${version}",
-	"name": "Generation Xray",
-	"description": "xray based virtual chunk generation using a seed",
+	"name": "Seed X-Ray",
+	"description": "Client-side x-ray that finds ores by regenerating chunks from the world seed, then draws them through terrain.",
 	"authors": [
+		"weykn",
 		"CasioWatch123"
 	],
 	"contact": {
-		"homepage": "https://github.com/CasioWatch123/",
-		"sources": "https://github.com/CasioWatch123/GenerationXray"
+		"homepage": "https://github.com/weykn/GenerationXray",
+		"sources": "https://github.com/weykn/GenerationXray",
+		"issues": "https://github.com/weykn/GenerationXray/issues"
 	},
 	"license": "CC0-1.0",
-	"icon": "assets/generation-xray/icon.png",
+	"icon": "assets/seedxray/icon.png",
 	"environment": "*",
 	"entrypoints": {
         "modmenu": [
-          "com.generationxray.config.ModMenuEntrypoint"
+          "com.seedxray.config.ModMenuEntrypoint"
         ],
 		"main": [
 		],
 		"client": [
-			"com.generationxray.GenerationXrayClient"
+			"com.seedxray.SeedXRayClient"
 		]
 	},
+	"accessWidener": "seedxray.accesswidener",
 	"mixins": [
-		"generation-xray.mixins.json",
+		"seedxray.mixins.json",
 		{
-			"config": "generation-xray.client.mixins.json",
+			"config": "seedxray.client.mixins.json",
 			"environment": "client"
 		}
 	],
 	"depends": {
-		"fabricloader": ">=0.18.4",
-		"minecraft": "~1.21.11",
-		"java": ">=21",
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.1",
+		"java": ">=25",
 		"fabric-api": "*",
-        "vchunklib": "=1.0.0+1.21.11",
-        "modmenu": ">=17.0.0", 
-        "cloth-config": "=21.11.153"
+        "vchunklib": "=${vchunklib_version}",
+        "modmenu": ">=18.0.0-beta.1",
+        "cloth-config": ">=26.1.154"
 	}
 }

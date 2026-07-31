@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "vchunklib",
+	"version": "${version}",
+	"name": "VChunkLib",
+	"description": "Library for generating throwaway chunks from a seed off-thread, without touching the loaded world.",
+	"authors": [
+		"CasioWatch123",
+		"weykn"
+	],
+	"contact": {
+		"homepage": "https://github.com/weykn/GenerationXray",
+		"sources": "https://github.com/weykn/GenerationXray/tree/master/vchunklib",
+		"issues": "https://github.com/weykn/GenerationXray/issues"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/vchunklib/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+          "com.casiowatch123.vchunklib.VChunkLib"
+		]
+	},
+	"mixins": [
+		"vchunklib.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.1",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
