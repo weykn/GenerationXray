@@ -9,6 +9,7 @@
   "seedxray.config.seed": "Seed",
   "seedxray.config.blocks": "Ores / Blocks (%s)",
   "seedxray.config.render_filled": "Render Filled",
+  "seedxray.config.fill_opacity": "Fill Opacity",
   "seedxray.config.render_distance": "Render Distance",
   "seedxray.config.vertical_view_distance": "Vertical View Distance",
   "seedxray.config.vertical_view_distance.unlimited": "All",

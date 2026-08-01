@@ -73,6 +73,16 @@ public class SeedXRayConfigScreen extends Screen {
                 }));
 
         rows.addChild(new IntSliderWidget(ROW_WIDTH, ROW_HEIGHT,
+                Component.translatable("seedxray.config.fill_opacity"),
+                ConfigConstants.MIN_FILL_OPACITY, ConfigConstants.MAX_FILL_OPACITY,
+                config.fillOpacity,
+                value -> Component.literal(value + "%"),
+                value -> {
+                    config.fillOpacity = value;
+                    save();
+                }));
+
+        rows.addChild(new IntSliderWidget(ROW_WIDTH, ROW_HEIGHT,
                 Component.translatable("seedxray.config.render_distance"),
                 ConfigConstants.MIN_RENDER_DISTANCE, ConfigConstants.MAX_RENDER_DISTANCE,
                 config.renderDistance,

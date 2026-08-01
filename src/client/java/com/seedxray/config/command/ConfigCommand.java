@@ -36,6 +36,7 @@ public class ConfigCommand {
                             return 1;
                         })));
         parent.then(toggle("filled", handler::displayRenderFilled, handler::setRenderFilled));
+        parent.then(number("opacity", handler::displayFillOpacity, handler::setFillOpacity));
         parent.then(number("distance", handler::displayRenderDistance, handler::setRenderDistance));
         parent.then(number("vdistance", handler::displayVerticalViewDistance, handler::setVerticalViewDistance));
         parent.then(toggle("hud", handler::displayHudStatusIndicator, handler::setHudStatusIndicator));

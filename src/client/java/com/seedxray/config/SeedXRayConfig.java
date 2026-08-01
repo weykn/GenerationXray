@@ -18,7 +18,10 @@ public class SeedXRayConfig implements ConfigData {
     public List<BlockEntry> blocks = DefaultBlocks.defaultEntries();
 
     /** outlines are always drawn, this adds the translucent box inside them */
-    public boolean renderFilled = true;
+    public boolean renderFilled = false;
+
+    /** how solid that box is, in percent */
+    public int fillOpacity = 20;
 
     /** region radius in chunks */
     public int renderDistance = 2;
@@ -34,6 +37,8 @@ public class SeedXRayConfig implements ConfigData {
                 ConfigConstants.MIN_RENDER_DISTANCE, ConfigConstants.MAX_RENDER_DISTANCE);
         this.verticalViewDistance = clamp(this.verticalViewDistance,
                 ConfigConstants.MIN_VERTICAL_VIEW_DISTANCE, ConfigConstants.MAX_VERTICAL_VIEW_DISTANCE);
+        this.fillOpacity = clamp(this.fillOpacity,
+                ConfigConstants.MIN_FILL_OPACITY, ConfigConstants.MAX_FILL_OPACITY);
 
         // an older config, or a hand edited one, can leave this null or full of junk
         if (this.blocks == null) {
@@ -60,5 +65,9 @@ public class SeedXRayConfig implements ConfigData {
 
         public static final int MIN_RENDER_DISTANCE = 0;
         public static final int MAX_RENDER_DISTANCE = 9;
+
+        /** percent, the max is also what a full alpha byte maps to */
+        public static final int MIN_FILL_OPACITY = 0;
+        public static final int MAX_FILL_OPACITY = 100;
     }
 }

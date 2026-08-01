@@ -100,6 +100,19 @@ public class ConfigHandler extends AbstractConfigHandler {
         }
     }
 
+    public void displayFillOpacity() {
+        display("fill opacity", number(config().fillOpacity));
+    }
+
+    public void setFillOpacity(int value) {
+        if (value < ConfigConstants.MIN_FILL_OPACITY || value > ConfigConstants.MAX_FILL_OPACITY) {
+            displayRange(ConfigConstants.MIN_FILL_OPACITY, ConfigConstants.MAX_FILL_OPACITY);
+            return;
+        }
+        config().fillOpacity = value;
+        changed("fill opacity", number(value));
+    }
+
     public void displayRenderDistance() {
         display("render distance", number(config().renderDistance));
     }

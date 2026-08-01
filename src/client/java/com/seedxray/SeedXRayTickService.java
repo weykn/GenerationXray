@@ -35,18 +35,18 @@ import net.minecraft.world.level.dimension.DimensionType;
 public class SeedXRayTickService {
     private static final Logger LOGGER = SeedXRay.LOGGER;
 
-    /** how see-through the "render filled" box is */
-    private static final int FILL_ALPHA = 0x50;
+    /** ticks to wait after a region failed to generate before asking for it again */
+    private static final int FAILED_LOAD_RETRY_TICKS = 40;
+    /** stands in for "no vertical limit" in the render data key */
+    private static final int NO_SECTION_LIMIT = Integer.MIN_VALUE;
 
     private final ConfigHolder<SeedXRayConfig> configHolder;
     private PalettedContainerFactory palettesFactory;
 
     private VWorldService vWorld;
     private OreChunkLoader loader;
-    private ChunkPos pos;
     private ResourceKey<Level> dimensionKey;
     private long seed;
-    private int loadRadius = -1;
 
     /** blocks to look for, rebuilt whenever the configured list changes */
     private Set<Block> trackedBlocks = Set.of();
@@ -55,10 +55,29 @@ public class SeedXRayTickService {
     /** hash of the config list the two fields above were built from */
     private int blockListHash;
 
+    /**
+     * The load that is in flight, or the last one that ran. Only one region is ever
+     * generated at a time: overlapping regions share their chunk holders, and two of
+     * them taking the per chunk locks in different orders can wedge the whole pool.
+     */
     private CompletableFuture<StaticCache2D<GenChunkHolder>> regionFuture;
+    /** false while {@link #regionFuture} still has a result nobody looked at */
+    private boolean regionConsumed = true;
+    /** centre and radius {@link #regionFuture} was asked for, null when nothing was */
+    private ChunkPos requestedPos;
+    private int requestedRadius = -1;
+    private int retryCooldown;
+
+    /** newest region that finished generating, what the boxes below are built from */
+    private StaticCache2D<GenChunkHolder> loadedRegion;
     private LoadStatus regionLoadStatus = LoadStatus.LOAD_DISABLED;
 
     private volatile List<OreRenderBatch> renderData = null;
+    // what renderData was built from, so it is only rebuilt when one of them moves
+    private StaticCache2D<GenChunkHolder> renderDataRegion;
+    private int renderDataSectionY;
+    private int renderDataVerticalDistance;
+    private int renderDataFillAlpha;
 
     public SeedXRayTickService(ConfigHolder<SeedXRayConfig> configHolder) {
         this.configHolder = configHolder;
@@ -82,9 +101,8 @@ public class SeedXRayTickService {
         SeedXRayConfig config = configHolder.getConfig();
 
         // block list edits have to reach the chunks that were already generated
-        if (config.blocks.hashCode() != this.blockListHash) {
-            rebuildTrackedBlocks();
-            this.pos = null;
+        if (config.blocks.hashCode() != this.blockListHash && rebuildTrackedBlocks()) {
+            invalidateRegion();
         }
 
         //loader
@@ -95,78 +113,162 @@ public class SeedXRayTickService {
             rebuildWorld(getDimensionKey(world), config.seed);
         }
 
+        if (!config.active) {
+            deactivate();
+            return;
+        }
+
+        //pick up a region that finished generating
+        if (this.regionFuture != null && this.regionFuture.isDone() && !this.regionConsumed) {
+            this.regionConsumed = true;
+            takeFinishedRegion();
+        }
+
         //v chunk region
-        if (config.active) {
-            //reload
-            ChunkPos playerPos = player.chunkPosition();
-            if (pos == null || this.loadRadius == -1
-                 ||playerPos.pack() != pos.pack()
-                 || config.renderDistance != this.loadRadius) {
-                this.regionFuture = loader.loadChunks(
-                        playerPos, config.renderDistance, this.trackedBlocks, this.trackedVersion);
-                this.pos = player.chunkPosition();
-                this.loadRadius = config.renderDistance;
-            }
-        } else {
-            this.pos = null;
-            this.regionFuture = null;
-            this.renderData = null;
-            this.loader.clearCache();
+        ChunkPos playerPos = player.chunkPosition();
+        // the request is keyed to where it was asked from, not to where the player was
+        // when it was issued: a load that failed or that the player walked out of stays
+        // stale until a fresh one actually finishes
+        boolean stale = this.requestedPos == null
+                || this.requestedPos.pack() != playerPos.pack()
+                || this.requestedRadius != config.renderDistance;
+        boolean idle = this.regionFuture == null || (this.regionFuture.isDone() && this.regionConsumed);
+
+        if (this.retryCooldown > 0) {
+            this.retryCooldown--;
+        } else if (stale && idle) {
+            this.regionFuture = this.loader.loadChunks(
+                    playerPos, config.renderDistance, this.trackedBlocks, this.trackedVersion);
+            this.regionConsumed = false;
+            this.requestedPos = playerPos;
+            this.requestedRadius = config.renderDistance;
         }
 
         //ore render data
-        if (regionFuture != null &&
-        regionFuture.isDone() &&
-        !regionFuture.isCancelled() &&
-        !regionFuture.isCompletedExceptionally()) {
-            //generate render data
-            StaticCache2D<GenChunkHolder> region = regionFuture.join();
-            if (region == null) {
-                LOGGER.warn("render data update failed [{}, {}]", pos.x(), pos.z());
-                return;
-            }
-
-            List<OreRenderBatch> renderData = new ArrayList<>(this.trackedBlocks.size());
-
-            int vvd = config.verticalViewDistance;
-            int startSectionY = (player.getBlockY() >> 4) - vvd;
-            int endSectionY = (player.getBlockY() >> 4) + vvd;
-
-            for (Block block : this.trackedBlocks) {
-                LongCollection collection = new LongArrayList();
-
-                region.forEach(holder -> {
-                    if (vvd == -1) {
-                        collection.addAll(holder.getOreData(block));
-                    } else {
-                        collection.addAll(holder.getOreData(block, startSectionY, endSectionY));
-                    }
-                });
-
-                if (collection.isEmpty()) {
-                    continue;
-                }
-
-                int rgb = this.trackedColors.getInt(block) & 0xFFFFFF;
-                renderData.add(new OreRenderBatch(
-                        collection,
-                        (FILL_ALPHA << 24) | rgb,
-                        0xFF000000 | rgb));
-            }
-            this.renderData = renderData;
-        }
+        updateRenderData(player, config);
 
         //load status data
-        if (regionFuture == null) {
-            this.regionLoadStatus = LoadStatus.LOAD_DISABLED;
-        } else if (regionFuture.isCompletedExceptionally()) {
-            this.regionLoadStatus = LoadStatus.COMPLETED_EXCEPTIONALLY;
-        } else if (regionFuture.isCancelled()) {
-            this.regionLoadStatus = LoadStatus.CANCELLED;
-        } else if (regionFuture.isDone()) {
-            this.regionLoadStatus = LoadStatus.DONE;
-        } else {
-            this.regionLoadStatus = LoadStatus.IS_WORKING;
+        this.regionLoadStatus = statusOf(stale);
+    }
+
+    /** Reads the finished region out of {@link #regionFuture}, or queues a retry. */
+    private void takeFinishedRegion() {
+        StaticCache2D<GenChunkHolder> region = null;
+        if (!this.regionFuture.isCancelled() && !this.regionFuture.isCompletedExceptionally()) {
+            region = this.regionFuture.join();
+        }
+
+        if (region == null) {
+            LOGGER.warn("region generation failed [{}, {}], retrying",
+                    this.requestedPos == null ? 0 : this.requestedPos.x(),
+                    this.requestedPos == null ? 0 : this.requestedPos.z());
+            // forget what was asked for, otherwise the position stays marked as loaded
+            // and the ores never move again until the player toggles the mod off and on
+            invalidateRegion();
+            this.retryCooldown = FAILED_LOAD_RETRY_TICKS;
+            return;
+        }
+
+        this.loadedRegion = region;
+    }
+
+    /**
+     * Rebuilds the ore boxes, but only when something they depend on actually moved:
+     * the region itself, the vertical slice around the player, or the fill opacity.
+     */
+    private void updateRenderData(LocalPlayer player, SeedXRayConfig config) {
+        StaticCache2D<GenChunkHolder> region = this.loadedRegion;
+        if (region == null) {
+            return;
+        }
+
+        int vvd = config.verticalViewDistance;
+        int sectionY = vvd == SeedXRayConfig.ConfigConstants.MIN_VERTICAL_VIEW_DISTANCE
+                ? NO_SECTION_LIMIT
+                : player.getBlockY() >> 4;
+        int fillAlpha = fillAlpha(config);
+
+        if (this.renderData != null
+                && this.renderDataRegion == region
+                && this.renderDataSectionY == sectionY
+                && this.renderDataVerticalDistance == vvd
+                && this.renderDataFillAlpha == fillAlpha) {
+            return;
+        }
+
+        List<OreRenderBatch> renderData = new ArrayList<>(this.trackedBlocks.size());
+
+        for (Block block : this.trackedBlocks) {
+            LongCollection collection = new LongArrayList();
+
+            region.forEach(holder -> {
+                if (sectionY == NO_SECTION_LIMIT) {
+                    collection.addAll(holder.getOreData(block));
+                } else {
+                    collection.addAll(holder.getOreData(block, sectionY - vvd, sectionY + vvd));
+                }
+            });
+
+            if (collection.isEmpty()) {
+                continue;
+            }
+
+            int rgb = this.trackedColors.getInt(block) & 0xFFFFFF;
+            renderData.add(new OreRenderBatch(
+                    collection,
+                    (fillAlpha << 24) | rgb,
+                    0xFF000000 | rgb));
+        }
+
+        this.renderData = renderData;
+        this.renderDataRegion = region;
+        this.renderDataSectionY = sectionY;
+        this.renderDataVerticalDistance = vvd;
+        this.renderDataFillAlpha = fillAlpha;
+    }
+
+    /** configured percentage turned into the alpha byte of the filled box */
+    private static int fillAlpha(SeedXRayConfig config) {
+        int percent = Math.max(SeedXRayConfig.ConfigConstants.MIN_FILL_OPACITY,
+                Math.min(SeedXRayConfig.ConfigConstants.MAX_FILL_OPACITY, config.fillOpacity));
+        return Math.round(percent * 255f / SeedXRayConfig.ConfigConstants.MAX_FILL_OPACITY);
+    }
+
+    private LoadStatus statusOf(boolean stale) {
+        if (this.regionFuture == null) {
+            return LoadStatus.IS_WORKING;
+        }
+        if (this.regionFuture.isCancelled()) {
+            return LoadStatus.CANCELLED;
+        }
+        if (this.regionFuture.isCompletedExceptionally()) {
+            return LoadStatus.COMPLETED_EXCEPTIONALLY;
+        }
+        // a region that finished for a chunk the player already left is not done
+        return this.regionFuture.isDone() && !stale ? LoadStatus.DONE : LoadStatus.IS_WORKING;
+    }
+
+    /** Marks the loaded region as no longer matching what should be on screen. */
+    private void invalidateRegion() {
+        this.requestedPos = null;
+        this.requestedRadius = -1;
+    }
+
+    private void deactivate() {
+        if (this.regionLoadStatus == LoadStatus.LOAD_DISABLED) {
+            return;
+        }
+        // the future is kept: a region that is still generating has to be waited out
+        // before the next one starts, marking it consumed just throws its result away
+        this.regionConsumed = true;
+        this.retryCooldown = 0;
+        this.loadedRegion = null;
+        this.renderData = null;
+        this.renderDataRegion = null;
+        this.regionLoadStatus = LoadStatus.LOAD_DISABLED;
+        invalidateRegion();
+        if (this.loader != null) {
+            this.loader.clearCache();
         }
     }
 
@@ -174,8 +276,10 @@ public class SeedXRayTickService {
      * Turns the configured id list into the block set the scan runs against. The
      * version bumps only when the set of blocks changes, so recolouring an entry
      * does not throw away chunks that are already scanned.
+     *
+     * @return true when the set of blocks changed and the region has to be rescanned
      */
-    private void rebuildTrackedBlocks() {
+    private boolean rebuildTrackedBlocks() {
         List<BlockEntry> entries = configHolder.getConfig().blocks;
         Set<Block> tracked = new ReferenceOpenHashSet<>(entries.size());
 
@@ -189,12 +293,16 @@ public class SeedXRayTickService {
             this.trackedColors.put(block, entry.rgb & 0xFFFFFF);
         }
 
-        if (!tracked.equals(this.trackedBlocks)) {
+        boolean changed = !tracked.equals(this.trackedBlocks);
+        if (changed) {
             this.trackedBlocks = tracked;
             this.trackedVersion++;
         }
         this.blockListHash = entries.hashCode();
+        // a colour edit does not touch the scan, but it does change the boxes
         this.renderData = null;
+        this.renderDataRegion = null;
+        return changed;
     }
 
     /**
@@ -211,10 +319,9 @@ public class SeedXRayTickService {
         if (this.loader != null) {
             this.loader.cancel();
         }
-        if (this.regionFuture != null) {
-            this.regionFuture.cancel(true);
-            this.regionFuture = null;
-        }
+        this.regionFuture = null;
+        this.regionConsumed = true;
+        this.retryCooldown = 0;
 
         this.dimensionKey = dimensionKey;
         this.seed = seed;
@@ -226,9 +333,10 @@ public class SeedXRayTickService {
 
         // drop the old ores immediately - otherwise they keep being drawn until the
         // new region finishes generating
+        this.loadedRegion = null;
         this.renderData = null;
-        this.pos = null;
-        this.loadRadius = -1;
+        this.renderDataRegion = null;
+        invalidateRegion();
     }
 
     public List<OreRenderBatch> getOreRenderData() {

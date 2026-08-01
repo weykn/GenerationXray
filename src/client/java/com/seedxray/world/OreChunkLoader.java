@@ -41,10 +41,16 @@ public class OreChunkLoader {
 
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4);
     
-    private StaticCache2D<GenChunkHolder> cache;
+    private volatile StaticCache2D<GenChunkHolder> cache;
+    /**
+     * Bumped by {@link #clearCache()}. A load that is already running captures it and
+     * only stores its chunks if it still matches, so dropping the cache cannot be
+     * undone a moment later by whatever was in flight at the time.
+     */
+    private volatile int cacheEpoch;
     /** set when this loader's world is replaced (seed or dimension change) */
     private volatile boolean cancelled;
-    
+
     private final VWorldService world;
     private final VChunkGenerationContext generationContext;
     private final PalettedContainerFactory palettesFactory;
@@ -68,12 +74,21 @@ public class OreChunkLoader {
             return CompletableFuture.completedFuture(null);
         }
 
-        int radius = centerRadius + MAX_DEPENDENT_REGION_RADIUS;
+        // placing a chunk's features also writes into its neighbours, so a chunk only
+        // holds every ore it is ever going to hold once the ring around it has run the
+        // final step too - that ring is generated and then left out of the result
+        int featureMargin = VChunkGenerationSteps.GENERATION.get(FINAL_STATUS).blockStateWriteRadius();
+        int generationRadius = centerRadius + featureMargin;
+        int radius = generationRadius + MAX_DEPENDENT_REGION_RADIUS;
         int size = 2*radius + 1;
+
+        // read on the caller's thread, so clearing the cache cannot slip in between
+        int epoch = this.cacheEpoch;
+        StaticCache2D<GenChunkHolder> cacheSnapshot = this.cache;
 
         try {
             return CompletableFuture.supplyAsync(() -> {
-                        StaticCache2D<GenChunkHolder> genChunkHolderArray = generateRegion(centerPos, radius, this.cache);
+                        StaticCache2D<GenChunkHolder> genChunkHolderArray = generateRegion(centerPos, radius, cacheSnapshot);
                         StaticCache2D<ChunkAccess> chunks = StaticCache2D.create(
                                 centerPos.x(), centerPos.z(), radius,
                                 (x, z) -> genChunkHolderArray.get(x, z).getChunk());
@@ -82,7 +97,7 @@ public class OreChunkLoader {
                             if (this.cancelled) {
                                 return null;
                             }
-                            int currentGeneratingSize = 2 * (GENERATE_RADIUS_LIST.get(status.getIndex()) + centerRadius) + 1;
+                            int currentGeneratingSize = 2 * (GENERATE_RADIUS_LIST.get(status.getIndex()) + generationRadius) + 1;
                             int blank = (size - currentGeneratingSize) / 2;
 
                             VChunkGenerationStep step = VChunkGenerationSteps.GENERATION.get(status);
@@ -126,14 +141,18 @@ public class OreChunkLoader {
                             }
                         }
 
-                        this.cache = genChunkHolderArray;
+                        if (this.cacheEpoch == epoch) {
+                            this.cache = genChunkHolderArray;
+                        }
 
                         StaticCache2D<GenChunkHolder> region = StaticCache2D.create(
-                                centerPos.x(), centerPos.z(), centerRadius + 1,
+                                centerPos.x(), centerPos.z(), centerRadius,
                                 genChunkHolderArray::get);
 
                         // the finished chunks are the source of truth: reading the blocks back
-                        // out of them picks up anything generation put there, whatever placed it
+                        // out of them picks up anything generation put there, whatever placed it.
+                        // every chunk in here is done being written to, so a chunk that a previous
+                        // region already scanned can be taken as is
                         region.forEach(holder -> holder.scan(tracked, trackedVersion));
 
                         return region;
@@ -143,8 +162,9 @@ public class OreChunkLoader {
                         return null;
                     });
         } catch (RejectedExecutionException e) {
-            return CompletableFuture.completedFuture(
-                    generateRegion(centerPos, centerRadius + 1, null));
+            // half generated chunks would only show a partial, unstable set of ores
+            LOGGER.warn("Region generation rejected: [{}, {}]", centerPos.x(), centerPos.z());
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -249,6 +269,7 @@ public class OreChunkLoader {
     }
     
     public void clearCache() {
+        this.cacheEpoch++;
         this.cache = null;
     }
 
@@ -258,6 +279,6 @@ public class OreChunkLoader {
      */
     public void cancel() {
         this.cancelled = true;
-        this.cache = null;
+        clearCache();
     }
 }
