@@ -288,7 +288,7 @@ public class VChunkRegion extends WorldGenRegion{
     }
 
     private void markBlockForPostProcessing(BlockPos pos) {
-        this.getChunk(pos).markPosForPostprocessing(pos);
+        this.getChunk(pos).markPosForPostProcessing(pos);
     }
 
     @Override

@@ -53,7 +53,7 @@ public class BlockListScreen extends Screen {
         LinearLayout footer = layout.addToFooter(LinearLayout.horizontal().spacing(8));
         footer.addChild(Button.builder(
                         Component.translatable("seedxray.config.blocks.add"),
-                        button -> this.minecraft.setScreen(new BlockPickerScreen(this)))
+                        button -> this.minecraft.gui.setScreen(new BlockPickerScreen(this)))
                 .width(150)
                 .build());
         footer.addChild(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
@@ -94,7 +94,7 @@ public class BlockListScreen extends Screen {
     @Override
     public void onClose() {
         save();
-        this.minecraft.setScreen(this.parent);
+        this.minecraft.gui.setScreen(this.parent);
     }
 
     private class BlockList extends ContainerObjectSelectionList<BlockList.Entry> {

@@ -15,7 +15,7 @@ public abstract class AbstractConfigHandler {
     }
 
     protected static void displayMessage(Component text) {
-        ChatComponent chatHud = Minecraft.getInstance().gui.getChat();
+        ChatComponent chatHud = Minecraft.getInstance().gui.hud.getChat();
         if (chatHud == null) {
             return;
         }

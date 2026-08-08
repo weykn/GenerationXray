@@ -158,7 +158,7 @@ public class OreChunkLoader {
                         return region;
                     }, EXECUTOR)
                     .exceptionally(ex -> {
-                        LOGGER.warn("Region generation failed: [{}, {}]", centerPos.x(), centerPos.z());
+                        LOGGER.warn("Region generation failed: [{}, {}]", centerPos.x(), centerPos.z(), ex);
                         return null;
                     });
         } catch (RejectedExecutionException e) {

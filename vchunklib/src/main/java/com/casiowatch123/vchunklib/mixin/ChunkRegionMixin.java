@@ -14,6 +14,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.status.ChunkStep;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.levelgen.PositionalRandomFactory;
 import net.minecraft.world.level.levelgen.RandomState;
@@ -83,10 +84,34 @@ public abstract class ChunkRegionMixin {
     }
     
     @Redirect(method = "<init>", at = @At(
-            value = "INVOKE", 
+            value = "INVOKE",
             target = "Lnet/minecraft/world/level/ChunkPos;getWorldPosition()Lnet/minecraft/core/BlockPos;"
     ))
     private BlockPos getStartPos(ChunkPos chunkPos) {
         return chunkPos == null ? null : chunkPos.getWorldPosition();
+    }
+
+    // 26.2 caches the center chunk coords and the write radius in the constructor.
+    // They only feed the write-zone checks, which VChunkRegion overrides wholesale,
+    // so a virtual region can leave them at zero.
+    @Redirect(method = "<init>", at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/world/level/ChunkPos;x()I"))
+    private int getCenterChunkX(ChunkPos chunkPos) {
+        return chunkPos == null ? 0 : chunkPos.x();
+    }
+
+    @Redirect(method = "<init>", at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/world/level/ChunkPos;z()I"))
+    private int getCenterChunkZ(ChunkPos chunkPos) {
+        return chunkPos == null ? 0 : chunkPos.z();
+    }
+
+    @Redirect(method = "<init>", at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/world/level/chunk/status/ChunkStep;blockStateWriteRadius()I"))
+    private int getWriteRadius(ChunkStep generationStep) {
+        return generationStep == null ? 0 : generationStep.blockStateWriteRadius();
     }
 }

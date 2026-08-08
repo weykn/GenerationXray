@@ -60,7 +60,7 @@ public class SeedXRayConfigScreen extends Screen {
 
         this.blocksButton = Button.builder(
                         blocksLabel(config),
-                        button -> this.minecraft.setScreen(new BlockListScreen(this)))
+                        button -> this.minecraft.gui.setScreen(new BlockListScreen(this)))
                 .bounds(0, 0, ROW_WIDTH, ROW_HEIGHT)
                 .build();
         rows.addChild(this.blocksButton);
@@ -174,7 +174,7 @@ public class SeedXRayConfigScreen extends Screen {
         save();
         // the layout is built once, so a fresh screen is what gets every widget
         // showing the defaults again
-        this.minecraft.setScreen(new SeedXRayConfigScreen(this.parent));
+        this.minecraft.gui.setScreen(new SeedXRayConfigScreen(this.parent));
     }
 
     @Override
@@ -202,6 +202,6 @@ public class SeedXRayConfigScreen extends Screen {
 
     @Override
     public void onClose() {
-        this.minecraft.setScreen(this.parent);
+        this.minecraft.gui.setScreen(this.parent);
     }
 }
